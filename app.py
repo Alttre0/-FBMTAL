@@ -17,7 +17,7 @@ def get_turkiye_saati():
     return datetime.utcnow() + timedelta(hours=3)
 
 def push_bildirim_gonder(mesaj):
-    header = {"Content-Type": "application/json; charset=utf-8", "Authorization": f"Basic {ONESIGNAL_REST_KEY}"}
+    header = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Basic " + ONESIGNAL_REST_KEY}
     payload = {
         "app_id": ONESIGNAL_APP_ID,
         "included_segments": ["Total Subscriptions"],
@@ -27,46 +27,50 @@ def push_bildirim_gonder(mesaj):
     r = requests.post("https://api.onesignal.com/notifications", headers=header, json=payload)
     return r.status_code
 
-# --- 2. GİRİŞTE İZİN İSTEYEN SİHİRLİ JS ---
-# Zil butonunu görünür yapar ve girişte izin penceresini (Slidedown) açar
-st.markdown(f'<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js" defer></script>', unsafe_allow_html=True)
-st.markdown(f'<script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>', unsafe_allow_html=True)
-st.markdown(f"""
-    <script>
-      window.OneSignal = window.OneSignal || [];
-      OneSignal.push(function() {
-        OneSignal.init({
-          appId: "{ONESIGNAL_APP_ID}",
-          allowLocalhostAsSecureOrigin: true,
-          promptOptions: {
-            slidedown: {
-              enabled: true,
-              autoPrompt: true,
-              timeDelay: 1,
-              pageViews: 1
-            }
-          },
-          notifyButton: {
-            enable: true,
-            displayPredicate: function() { return OneSignal.isPushNotificationsEnabled().then(function(isPushEnabled) { return !isPushEnabled; }); },
-            position: 'bottom-right',
-            size: 'medium',
-            theme: 'default'
-          }
-        });
-        // Girişte direkt izin penceresini tetikle
-        OneSignal.showNativePrompt();
-      });
-    </script>
+# --- 2. HATA VERMEYEN BİLDİRİM SCRIPTI ---
+# f-string kullanmıyoruz (f işaretini kaldırdık), değişkeni manuel ekliyoruz
+st.markdown('<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js" defer></script>', unsafe_allow_html=True)
+st.markdown('<script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>', unsafe_allow_html=True)
+
+# Değişkeni JS içine güvenli bir şekilde gömme
+onesignal_js = """
+<script>
+  window.OneSignal = window.OneSignal || [];
+  OneSignal.push(function() {
+    OneSignal.init({
+      appId: "APP_ID_GOLECEK",
+      allowLocalhostAsSecureOrigin: true,
+      promptOptions: {
+        slidedown: {
+          enabled: true,
+          autoPrompt: true,
+          timeDelay: 1,
+          pageViews: 1
+        }
+      },
+      notifyButton: {
+        enable: true,
+        position: 'bottom-right'
+      }
+    });
+  });
+</script>
+""".replace("APP_ID_GOLECEK", ONESIGNAL_APP_ID)
+
+st.markdown(onesignal_js, unsafe_allow_html=True)
+
+# --- 3. TASARIM VE DOSYALAR ---
+st.markdown("""
     <style>
-    .stApp {{ background-color: #0d1117; color: #c9d1d9; }}
-    .main-card {{ background: #161b22; padding: 20px; border-radius: 15px; border: 1px solid #30363d; margin-bottom: 20px; border-left: 5px solid #ff8c00; }}
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    .main-card { background: #161b22; padding: 20px; border-radius: 15px; border-left: 5px solid #ff8c00; margin-bottom: 20px; }
+    .stButton button { background: linear-gradient(135deg, #ff8c00 0%, #ff4500 100%); color: white; border-radius: 8px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. VERİTABANI VE LOGO ---
 FILES = {"data": "robotik_log.csv", "users": "ogrenciler.csv", "ban": "yarisma_ban.csv", "duyuru": "duyuru.txt", "logo": "logo.jpg"}
 
+# Dosya kontrolü (Hata almamak için)
 if not os.path.exists(FILES["data"]): pd.DataFrame(columns=["Zaman", "İsim", "İşlem", "Lehim", "Tip", "IP", "Puan"]).to_csv(FILES["data"], index=False)
 if not os.path.exists(FILES["users"]): pd.DataFrame(columns=["Isim", "Sinif"]).to_csv(FILES["users"], index=False)
 if not os.path.exists(FILES["ban"]): pd.DataFrame(columns=["IP", "Isim", "Sebep"]).to_csv(FILES["ban"], index=False)
@@ -75,43 +79,36 @@ if not os.path.exists(FILES["ban"]): pd.DataFrame(columns=["IP", "Isim", "Sebep"
 with st.sidebar:
     if os.path.exists(FILES["logo"]):
         st.image(FILES["logo"], use_container_width=True)
-    else:
-        st.markdown("<h2 style='text-align:center; color:#ff8c00;'>ROBOTİK</h2>", unsafe_allow_html=True)
-    secim = option_menu(None, ["Giriş", "Duyurular", "Sıralama", "Admin"], 
+    secim = option_menu("Robotik HUB", ["Giriş", "Duyurular", "Sıralama", "Yönetici"], 
         icons=['cpu', 'megaphone', 'award', 'shield-lock'], default_index=0)
 
 # --- 5. SAYFALAR ---
 if secim == "Giriş":
-    st.title("📟 Operatör Kayıt")
-    # Logoyu bir de burada gösteriyoruz
-    if os.path.exists(FILES["logo"]):
-        col_l, _ = st.columns([1, 4])
-        with col_l: st.image(FILES["logo"], width=120)
-
+    st.title("📟 Kayıt Terminali")
     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-    st.info("🔔 Bildirim uyarısı gelirse 'İzin Ver' diyerek duyurulardan haberdar olabilirsiniz.")
+    st.info("💡 Lütfen yukarıdan gelen veya sağ altta çıkan bildirim isteğine 'İzin Ver' deyin.")
     
     df_u = pd.read_csv(FILES["users"])
     secilen = st.selectbox("İsminiz:", ["Seçiniz..."] + sorted(df_u["Isim"].tolist()))
-    islem = st.text_input("Göreviniz:")
     
-    if st.button("KAYDI TAMAMLA 🚀"):
+    if st.button("ATÖLYEYE GİRİŞ YAP 🚀"):
         if secilen != "Seçiniz...":
-            z_str = get_turkiye_saati().strftime("%H:%M | %d-%m")
-            pd.DataFrame([[z_str, secilen, islem, "HAYIR", "GİRİŞ", "127.0.0.1", 10]], 
-                        columns=["Zaman", "İsim", "İşlem", "Lehim", "Tip", "IP", "Puan"]).to_csv(FILES["data"], mode='a', index=False, header=False)
-            st.balloons()
-            st.success("Kaydedildi!")
-        else: st.error("Lütfen ismini seç!")
+            st.balloons(); st.success(f"Hoş geldin {secilen}!"); time.sleep(1); st.rerun()
+        else: st.error("İsim seçilmedi!")
     st.markdown("</div>", unsafe_allow_html=True)
 
-elif secim == "Admin":
+elif secim == "Duyurular":
+    st.title("📢 Atölye Panosu")
+    with open(FILES["duyuru"], "r", encoding="utf-8") as f: content = f.read()
+    st.markdown(f"<div class='main-card' style='font-size: 20px;'>{content}</div>", unsafe_allow_html=True)
+
+elif secim == "Yönetici":
     sifre = st.text_input("Şifre:", type="password")
     if sifre == "15531552":
-        st.subheader("📢 OneSignal Global Bildirim")
-        y_duy = st.text_area("Mesaj içeriği:")
-        if st.button("TÜM CİHAZLARA GÖNDER 🚀"):
+        st.subheader("📢 Bildirim Gönder")
+        y_duy = st.text_area("Mesaj:")
+        if st.button("HERKESE GÖNDER 🚀"):
             with open(FILES["duyuru"], "w", encoding="utf-8") as f: f.write(y_duy)
-            stat = push_bildirim_gonder(y_duy)
-            if stat == 200: st.success("Bildirimler yola çıktı!")
-            else: st.error(f"Hata Kodu: {stat}")
+            status = push_bildirim_gonder(y_duy)
+            if status == 200: st.success("Bildirimler başarıyla gönderildi!")
+            else: st.error(f"Hata: {status}")
