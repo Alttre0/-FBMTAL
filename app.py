@@ -6,14 +6,12 @@ from datetime import datetime, timedelta
 from streamlit_option_menu import option_menu
 
 # --- 1. AYARLAR ---
-# OneSignal sadece "altyapı" olarak kalıyor, tarayıcıyla direkt konuşacağız.
 ONESIGNAL_APP_ID = "89c0debc-c7a8-4ffe-9848-9405df878dd4"
 
 def get_turkiye_saati():
     return datetime.utcnow() + timedelta(hours=3)
 
-# --- 2. JAVASCRIPT: BİLDİRİM İZNİNİ KİLİTLEYİCİ ---
-# Eğer izin verilmediyse Python'a "blocked" mesajı gönderir.
+# --- 2. JAVASCRIPT: PYTHON İLE KONUŞMA ---
 st.markdown(f"""
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js" defer></script>
 <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
@@ -26,79 +24,87 @@ st.markdown(f"""
       autoResubscribe: true
     }});
 
-    function updateStatus() {{
+    function checkAndReport() {{
         OneSignal.getNotificationPermission(function(permission) {{
             const input = window.parent.document.querySelector('input[aria-label="perm_status"]');
-            if (input) {{
+            if (input && input.value !== permission) {{
                 input.value = permission;
                 input.dispatchEvent(new Event('input', {{ bubbles: true }}));
             }}
         }});
     }}
-    
-    setInterval(updateStatus, 1000);
-    window.zorlaIzin = function() {{ OneSignal.showNativePrompt(); }};
+    setInterval(checkAndReport, 1000);
+    window.zorla = function() {{ OneSignal.showNativePrompt(); }};
   }});
 </script>
 """, unsafe_allow_html=True)
 
-# --- 3. DOSYA YÖNETİMİ ---
-FILES = {"data": "robotik_log.csv", "users": "ogrenciler.csv", "duyuru": "duyuru.txt"}
-
-def veri_yukle(dosya_turu):
-    yol = FILES[dosya_turu]
-    cols = ["Zaman", "İsim", "İşlem", "Puan"] if dosya_turu == "data" else ["Isim", "Sinif"]
-    if not os.path.exists(yol) or os.stat(yol).st_size == 0:
-        pd.DataFrame(columns=cols).to_csv(yol, index=False)
-        return pd.DataFrame(columns=cols)
-    return pd.read_csv(yol)
-
-# --- 4. TASARIM ---
+# --- 3. TASARIM ---
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .izin-kart { background: #1c2128; border: 2px solid #ff3e3e; padding: 30px; border-radius: 15px; text-align: center; margin-top: 50px; }
-    .stButton button { width: 100%; height: 50px; font-weight: bold; }
+    .izin-kart { background: #1c2128; border: 2px solid #ff8c00; padding: 25px; border-radius: 15px; text-align: center; }
     div[data-testid="stInput"] { display: none; }
     </style>
     """, unsafe_allow_html=True)
 
+# Gizli input (JS buraya yazar)
 perm_status = st.text_input("perm_status", value="default", label_visibility="collapsed")
 
-# --- 5. ANA MANTIK (İZİN KONTROLÜ) ---
+# --- 4. DOSYA YÜKLEME ---
+FILES = {"data": "robotik_log.csv", "users": "ogrenciler.csv", "duyuru": "duyuru.txt"}
+def veri_yukle(t):
+    if not os.path.exists(FILES[t]) or os.stat(FILES[t]).st_size == 0:
+        cols = ["Zaman", "İsim", "İşlem", "Puan"] if t=="data" else ["Isim", "Sinif"]
+        pd.DataFrame(columns=cols).to_csv(FILES[t], index=False)
+        return pd.DataFrame(columns=cols)
+    return pd.read_csv(FILES[t])
+
+# --- 5. ANA EKRAN KONTROLÜ ---
+# Eğer JS hala "default" diyorsa ama sen kilitte "İzin Verildi" görüyorsan, manuel geçiş sunuyoruz.
 if perm_status != "granted":
     st.markdown('<div class="izin-kart">', unsafe_allow_html=True)
-    st.error("🛑 SİSTEM ERİŞİMİ ENGELLENDİ!")
-    st.warning("Bildirimleri almayı kabul etmeden giriş yapamazsınız.")
-    if st.button("🔔 BİLDİRİM İZNİNİ ŞİMDİ VER"):
-        st.markdown('<script>window.zorlaIzin();</script>', unsafe_allow_html=True)
-    st.info("Eğer pencere açılmıyorsa adres çubuğundaki kilit (🔒) simgesinden izinleri sıfırlayıp sayfayı yenileyin.")
+    st.header("🔔 Bildirim Onayı")
+    st.write("Tarayıcında izin verildi görünüyor olabilir. Eğer pencere açılmıyorsa aşağıdaki butona basarak sisteme giriş yapabilirsin.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Pencereyi Aç"):
+            st.markdown('<script>window.zorla();</script>', unsafe_allow_html=True)
+    with col2:
+        if st.button("Zaten İzin Verdim (Giriş Yap)"):
+            # Bu buton perm_status'ü zorla "granted" yapar (Sadece bu oturum için)
+            st.session_state["force_login"] = True
+            st.rerun()
+    
+    st.info("İzin verdiysen ve hala buradaysan sağdaki butona tıkla.")
     st.markdown('</div>', unsafe_allow_html=True)
-    st.stop() # Sayfanın geri kalanını yükleme
+    
+    if "force_login" not in st.session_state:
+        st.stop()
 
-# --- 6. MENÜ VE SAYFALAR (Sadece izin verenler burayı görür) ---
+# --- 6. SİSTEM (GİRİŞ YAPANLAR İÇİN) ---
 with st.sidebar:
-    secim = option_menu("Atölye", ["Giriş", "Admin"], icons=['cpu', 'shield-lock'], default_index=0)
+    secim = option_menu("Atölye", ["Giriş", "Admin"], icons=['cpu', 'lock'], default_index=0)
 
 if secim == "Giriş":
-    st.title("Robotik Terminal")
+    st.title("Atölye Terminali")
     df_u = veri_yukle("users")
     if not df_u.empty:
-        secilen = st.selectbox("İsim:", ["Seçiniz..."] + sorted(df_u["Isim"].tolist()))
-        islem = st.text_input("İşlem:")
-        if st.button("Onayla"):
+        secilen = st.selectbox("İsminiz:", ["Seçiniz..."] + sorted(df_u["Isim"].astype(str).tolist()))
+        islem = st.text_input("Çalışma konusu:")
+        if st.button("Kaydet"):
             if secilen != "Seçiniz...":
-                zaman = get_turkiye_saati().strftime("%H:%M | %d-%m")
+                zaman = get_turkiye_saati().strftime("%H:%M")
                 pd.DataFrame([[zaman, secilen, islem, 10]], columns=veri_yukle("data").columns).to_csv(FILES["data"], mode='a', index=False, header=False)
-                st.success("Kayıt yapıldı.")
+                st.success("Başarıyla kaydedildi.")
                 time.sleep(1); st.rerun()
 
 elif secim == "Admin":
     sifre = st.text_input("Şifre:", type="password")
     if sifre == "15531552":
-        st.subheader("Duyuru Yayınla")
-        st.info("Duyuruyu buradan yayınlayın, sonra OneSignal sitesinden Push atın.")
-        mesaj = st.text_area("Mesaj:")
-        if st.button("Pano Güncelle"):
-            with open(FILES["duyuru"], "w", encoding="utf-8") as f: f.write(mesaj)
-            st.success("Pano güncellendi.")
+        st.subheader("Öğrenci Kaydı")
+        yeni = st.text_input("Ad Soyad:")
+        if st.button("Ekle"):
+            pd.DataFrame([[yeni, "10"]], columns=veri_yukle("users").columns).to_csv(FILES["users"], mode='a', index=False, header=False)
+            st.success("Öğrenci eklendi.")
