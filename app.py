@@ -6,14 +6,25 @@ import time
 from datetime import datetime, timedelta
 from streamlit_option_menu import option_menu
 
-# --- 1. ONESIGNAL BİLGİLERİ ---
+# --- 1. AYARLAR ---
 ONESIGNAL_APP_ID = "89c0debc-c7a8-4ffe-9848-9405df878dd4"
 ONESIGNAL_REST_KEY = "unkecvtjcufbmlqc2ftlrm46y"
 
 def get_turkiye_saati():
     return datetime.utcnow() + timedelta(hours=3)
 
-# --- 2. DOSYA KONTROLÜ (HATA ÖNLEYİCİ) ---
+def push_bildirim_gonder(mesaj):
+    header = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Basic " + ONESIGNAL_REST_KEY}
+    payload = {
+        "app_id": ONESIGNAL_APP_ID,
+        "included_segments": ["Total Subscriptions"],
+        "contents": {"tr": mesaj},
+        "headings": {"tr": "Robotik Atölyesi"}
+    }
+    r = requests.post("https://api.onesignal.com/notifications", headers=header, json=payload)
+    return r.status_code
+
+# --- 2. DOSYA YÖNETİMİ ---
 FILES = {
     "data": "robotik_log.csv", 
     "users": "ogrenciler.csv", 
@@ -22,23 +33,19 @@ FILES = {
     "logo": "logo.jpg"
 }
 
-def check_files():
-    # Eğer dosyalar yoksa veya içi boşsa (0 byte ise) başlıklarla beraber oluştur
+def dosya_kontrol():
     if not os.path.exists(FILES["data"]) or os.stat(FILES["data"]).st_size == 0:
         pd.DataFrame(columns=["Zaman", "İsim", "İşlem", "Lehim", "Tip", "IP", "Puan"]).to_csv(FILES["data"], index=False)
-    
     if not os.path.exists(FILES["users"]) or os.stat(FILES["users"]).st_size == 0:
         pd.DataFrame(columns=["Isim", "Sinif"]).to_csv(FILES["users"], index=False)
-    
     if not os.path.exists(FILES["ban"]) or os.stat(FILES["ban"]).st_size == 0:
         pd.DataFrame(columns=["IP", "Isim", "Sebep"]).to_csv(FILES["ban"], index=False)
-    
     if not os.path.exists(FILES["duyuru"]):
-        with open(FILES["duyuru"], "w", encoding="utf-8") as f: f.write("Hoş Geldiniz!")
+        with open(FILES["duyuru"], "w", encoding="utf-8") as f: f.write("Yeni duyuru bulunmuyor.")
 
-check_files()
+dosya_kontrol()
 
-# --- 3. BİLDİRİM ZORUNLULUĞU (JS) ---
+# --- 3. BİLDİRİM İZNİ (ZORUNLU) ---
 onesignal_js = """
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js" defer></script>
 <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
@@ -48,78 +55,117 @@ onesignal_js = """
     OneSignal.init({
       appId: "%s",
       allowLocalhostAsSecureOrigin: true,
-      promptOptions: { slidedown: { enabled: true, autoPrompt: true, timeDelay: 1 } }
+      promptOptions: { slidedown: { enabled: true, autoPrompt: true, timeDelay: 2 } }
     });
-
     OneSignal.isPushNotificationsEnabled(function(isEnabled) {
       if (!isEnabled) {
-        document.body.innerHTML = `
-          <div style="background:#0d1117; color:white; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-family:sans-serif; padding:20px;">
-            <h1 style="color:#ff8c00;">⚠️ ERİŞİM ENGELLENDİ</h1>
-            <p style="font-size:18px;">Atölye sistemine girmek için bildirimlere izin vermeniz zorunludur.</p>
-            <button onclick="OneSignal.showNativePrompt()" style="background:#ff8c00; border:none; padding:15px 30px; color:white; border-radius:10px; font-weight:bold; cursor:pointer; margin-top:20px;">İzin Ver ve Giriş Yap</button>
-          </div>`;
+        document.body.innerHTML = '<div style="background:#0d1117; color:white; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-family:sans-serif; padding:20px;"><h1>ERİŞİM KISITLANDI</h1><p>Sistemi kullanmak için bildirimlere izin vermeniz gerekmektedir.</p><button onclick="OneSignal.showNativePrompt()" style="background:#ff8c00; border:none; padding:15px 30px; color:white; border-radius:10px; cursor:pointer;">İzin Ver</button></div>';
       }
     });
   });
 </script>
 """ % ONESIGNAL_APP_ID
-
 st.markdown(onesignal_js, unsafe_allow_html=True)
 
 # --- 4. TASARIM ---
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .main-card { background: #161b22; padding: 20px; border-radius: 15px; border-left: 5px solid #ff8c00; margin-bottom: 20px; }
-    .stButton button { background: linear-gradient(135deg, #ff8c00 0%, #ff4500 100%); color: white; border-radius: 8px; font-weight: bold; width:100%; }
+    .main-card { background: #161b22; padding: 20px; border-radius: 10px; border-left: 4px solid #ff8c00; margin-bottom: 20px; }
+    .stButton button { background: #ff8c00; color: white; border-radius: 5px; width: 100%; border: none; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 5. VERİLERİ YÜKLE ---
+# --- 5. VERİ YÜKLEME ---
 df_logs = pd.read_csv(FILES["data"])
 df_users = pd.read_csv(FILES["users"])
 df_ban = pd.read_csv(FILES["ban"])
 
-# --- 6. YAN MENÜ ---
+# --- 6. MENÜ ---
 with st.sidebar:
-    if os.path.exists(FILES["logo"]): st.image(FILES["logo"], use_container_width=True)
-    secim = option_menu("Robotik Kontrol", ["Giriş", "Duyurular", "Sıralama", "Yönetici"], 
+    if os.path.exists(FILES["logo"]):
+        st.image(FILES["logo"], use_container_width=True)
+    secim = option_menu(None, ["Giriş", "Duyurular", "Sıralama", "Admin"], 
                         icons=['cpu', 'megaphone', 'award', 'shield-lock'], default_index=0)
 
 # --- 7. SAYFALAR ---
 if secim == "Giriş":
-    st.title("📟 Atölye Kayıt")
+    st.title("Terminal Girişi")
     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-    
     if df_users.empty:
-        st.warning("⚠️ Henüz öğrenci kaydı yok. Lütfen Yönetici panelinden öğrenci ekleyin.")
+        st.warning("Sistemde kayıtlı öğrenci bulunamadı. Lütfen Admin panelinden ekleme yapın.")
     else:
-        secilen = st.selectbox("İsminiz:", ["Seçiniz..."] + sorted(df_users["Isim"].tolist()))
-        islem = st.text_input("Göreviniz?")
-        if st.button("KAYDI TAMAMLA 🚀"):
+        isim_listesi = sorted(df_users["Isim"].tolist())
+        secilen = st.selectbox("İsminiz:", ["Seçiniz..."] + isim_listesi)
+        islem = st.text_input("Yapılan İşlem:")
+        if st.button("Kaydı Onayla"):
             if secilen != "Seçiniz...":
-                z_str = get_turkiye_saati().strftime("%H:%M | %d-%m")
-                pd.DataFrame([[z_str, secilen, islem, "HAYIR", "GİRİŞ", "127.0.0.1", 10]], columns=df_logs.columns).to_csv(FILES["data"], mode='a', index=False, header=False)
-                st.balloons(); st.success("Giriş kaydedildi!"); time.sleep(1); st.rerun()
-            else: st.error("Lütfen isim seçin!")
+                zaman = get_turkiye_saati().strftime("%H:%M | %d-%m")
+                yeni_kayit = pd.DataFrame([[zaman, secilen, islem, "HAYIR", "GİRİŞ", "127.0.0.1", 10]], columns=df_logs.columns)
+                yeni_kayit.to_csv(FILES["data"], mode='a', index=False, header=False)
+                st.success("Kayıt işlemi başarılı.")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Lütfen bir isim seçin.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-elif secim == "Yönetici":
-    sifre = st.text_input("Şifre:", type="password")
+elif secim == "Duyurular":
+    st.title("Duyuru Panosu")
+    with open(FILES["duyuru"], "r", encoding="utf-8") as f:
+        icerik = f.read()
+    st.markdown(f"<div class='main-card' style='font-size: 18px;'>{icerik}</div>", unsafe_allow_html=True)
+
+elif secim == "Sıralama":
+    st.title("Puan Sıralaması")
+    if not df_logs.empty:
+        puanlar = df_logs.groupby("İsim")["Puan"].sum().reset_index().sort_values("Puan", ascending=False)
+        st.table(puanlar)
+    else:
+        st.info("Henüz veri bulunmuyor.")
+
+elif secim == "Admin":
+    sifre = st.text_input("Admin Şifresi:", type="password")
     if sifre == "15531552":
-        t1, t2 = st.tabs(["Öğrenci Ekle/Sil", "Duyuru Paylaş"])
+        sekme1, sekme2, sekme3 = st.tabs(["Öğrenci Yönetimi", "Duyuru Paylaşımı", "Veri Temizleme"])
         
-        with t1:
-            y_ad = st.text_input("Yeni Öğrenci Adı:")
-            if st.button("Ekle"):
-                pd.DataFrame([[y_ad, "10"]], columns=["Isim", "Sinif"]).to_csv(FILES["users"], mode='a', index=False, header=False)
-                st.success("Eklendi."); st.rerun()
-            
+        with sekme1:
+            st.subheader("Öğrenci Ekle")
+            yeni_ad = st.text_input("Ad Soyad:")
+            if st.button("Öğrenciyi Kaydet"):
+                if yeni_ad:
+                    pd.DataFrame([[yeni_ad, "Atölye"]], columns=["Isim", "Sinif"]).to_csv(FILES["users"], mode='a', index=False, header=False)
+                    st.success("Öğrenci eklendi.")
+                    st.rerun()
+
             st.write("---")
+            st.subheader("Öğrenci Sil")
             if not df_users.empty:
-                sil_ad = st.selectbox("Silinecek Öğrenci:", sorted(df_users["Isim"].tolist()))
-                if st.button("ÖĞRENCİYİ SİSTEMDEN SİL"):
-                    df_u_new = df_users[df_users["Isim"] != sil_ad]
-                    df_u_new.to_csv(FILES["users"], index=False)
-                    st.success("Silindi."); st.rerun()
+                silinecek = st.selectbox("Silinecek Öğrenci:", df_users["Isim"].tolist())
+                if st.button("Seçili Öğrenciyi Sil"):
+                    yeni_df = df_users[df_users["Isim"] != silinecek]
+                    yeni_df.to_csv(FILES["users"], index=False)
+                    st.warning("Öğrenci sistemden kaldırıldı.")
+                    st.rerun()
+
+        with sekme2:
+            st.subheader("Duyuru Yayınla")
+            duyuru_metni = st.text_area("Mesaj içeriği:")
+            if st.button("Duyuruyu Gönder"):
+                if duyuru_metni:
+                    with open(FILES["duyuru"], "w", encoding="utf-8") as f:
+                        f.write(duyuru_metni)
+                    durum = push_bildirim_gonder(duyuru_metni)
+                    if durum == 200:
+                        st.success("Duyuru yayınlandı ve bildirim gönderildi.")
+                    else:
+                        st.error(f"Bildirim hatası. Kod: {durum}")
+                else:
+                    st.warning("Mesaj alanı boş bırakılamaz.")
+
+        with sekme3:
+            st.subheader("Sistem Verileri")
+            if st.button("Tüm Kayıtları Sıfırla"):
+                pd.DataFrame(columns=df_logs.columns).to_csv(FILES["data"], index=False)
+                st.success("Tüm giriş kayıtları temizlendi.")
+                st.rerun()
