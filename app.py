@@ -5,7 +5,7 @@ import os
 
 # --- AYARLAR ---
 APP_ID = "89c0debc-c7a8-4ffe-9848-9405df878dd4"
-REST_KEY = "BURAYA_REST_API_KEY_YAPISTIR" # <--- BURAYI DOLDUR
+REST_KEY = "os_v2_app_buraya_gelecek_olan_cok_uzun_kod" # <--- BURAYI DOLDUR
 
 def mesaj_at(kullanici_id, mesaj_metni):
     header = {
@@ -77,3 +77,4 @@ st.markdown(f"""
   }});
 </script>
 """, unsafe_allow_html=True)
+
