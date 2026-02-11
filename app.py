@@ -10,8 +10,8 @@ from streamlit_option_menu import option_menu
 st.set_page_config(page_title="Robotik Lab Terminal", page_icon="🤖", layout="wide")
 
 # BURAYA ONESIGNAL BİLGİLERİNİ YAPIŞTIR
-ONESIGNAL_APP_ID = "SENIN_APP_ID_BURAYA"
-ONESIGNAL_REST_KEY = "SENIN_REST_API_KEY_BURAYA"
+ONESIGNAL_APP_ID = "89c0debc-c7a8-4ffe-9848-9405df878dd4"
+ONESIGNAL_REST_KEY = "os_v2_app_rhan5pghvbh75gcisqc57b4n2tunkecvtjcufbmlqc2ftlrm46yqi4jsgq4ecnaaihpcytzbpwradw2aujhk72d7upp3burrixmxfpq"
 
 def get_turkiye_saati():
     return datetime.utcnow() + timedelta(hours=3)
@@ -161,3 +161,4 @@ elif secim == "Yönetici":
                 status = push_bildirim_gonder(y_mesaj)
                 if status == 200: st.success("✅ Bildirim tüm cihazlara gönderildi!")
                 else: st.error(f"Hata: {status}. API anahtarlarını kontrol et.")
+
