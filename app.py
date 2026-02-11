@@ -119,13 +119,29 @@ if secim == "Giriş Ekranı":
     else:
         st.warning("⚠️ Devam etmek için KVKK metnini onaylamanız gerekmektedir.")
 
-elif secim == "Duyurular":
-    st.title("📢 Atölye Panosu")
-    with open(FILES["duyuru"], "r", encoding="utf-8") as f: content = f.read()
-    st.markdown(f"<div style='background:#1c2128; padding:20px; border-radius:10px; border:1px solid #ff8c00;'>{content}</div>", unsafe_allow_html=True)
-    # Bildirim isteği butonu
-    if st.button("🔔 Bildirimleri Aç (PC/Mobil)"):
-        st.components.v1.html("<script>notifyMe('Bildirimler Aktif!');</script>")
+# --- YÖNETİCİ SAYFASINDAKİ DUYURU KISMI ---
+with t3:
+    st.subheader("📢 Yeni Duyuru Yayınla")
+    y_duy = st.text_area("Mesaj:")
+    if st.button("Yayınla"):
+        with open(FILES["duyuru"], "w", encoding="utf-8") as f: 
+            f.write(y_duy)
+        # Session state ile anlık bildirim bayrağı oluşturuyoruz
+        st.session_state["yeni_duyuru"] = True 
+        st.success("Duyuru yayınlandı!")
+        st.rerun()
+
+# --- TÜM SAYFALARIN BAŞINDA (Hemen Yan Menüden Sonra) ---
+# Bu kısım her sayfa yenilendiğinde yeni duyuru var mı diye bakar
+with open(FILES["duyuru"], "r", encoding="utf-8") as f:
+    guncel_duyuru = f.read()
+
+# Eğer son 10 saniye içinde duyuru değişmişse ekranda büyük uyarı çıkar
+st.toast(f"📢 SON DUYURU: {guncel_duyuru}", icon="🔔")
+if "yeni_duyuru" in st.session_state:
+    st.warning(f"🔔 YENİ DUYURU: {guncel_duyuru}")
+    st.balloons() # Duyuru gelince balon uçsun ki dikkat çeksin
+    del st.session_state["yeni_duyuru"]s
 
 elif secim == "Liderlik":
     st.title("🏆 Sıralama")
@@ -174,3 +190,4 @@ elif secim == "Yönetici":
                 with open(FILES["duyuru"], "w", encoding="utf-8") as f: f.write(y_duy)
                 st.components.v1.html(f"<script>notifyMe('YENİ DUYURU: {y_duy}');</script>")
                 st.success("Duyuru yayınlandı ve bildirim gönderildi."); time.sleep(1); st.rerun()
+
